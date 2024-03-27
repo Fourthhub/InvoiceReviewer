@@ -77,9 +77,10 @@ def determinar_serie_y_iva(reserva,token):
         iva=0
         return serie_facturacion,iva
     
-    custom_fields = reserva.get("listingCustomFields", [])
+    custom_fields = reserva.get("customFieldValues", [])
     for field in custom_fields:
-        if field["customField"]["name"] == "Serie_Facturación":
+        #listingcusotmField
+        if field["customFieldId"] == 57829:
             serie_facturacion = field["value"]
         if serie_facturacion == "Rocio":
             iva = 0

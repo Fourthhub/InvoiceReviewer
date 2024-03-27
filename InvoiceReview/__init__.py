@@ -39,9 +39,8 @@ def retrieveReservations(arrivalStartDate, departureStartDate):
 
     response = requests.get(url, headers=headers)
     data = response.json()
-
-    # Aquí puedes manejar los datos como necesites
-    print(data)
+    
+    return data
 def obtener_fechas():
     fecha_actual = datetime.now()
     fecha_hace_dos_semanas = fecha_actual - timedelta(weeks=2)
@@ -58,7 +57,8 @@ def comprobar_si_existe_factura(reserva):
 
 def main(mytimer: func.TimerRequest) -> None:
     principio, final = obtener_fechas()
-    listaReservas = retrieveReservations(principio,final)
+    listaReservas = retrieveReservations(principio,final).get("result")
+    
     for reserva1 in listaReservas:
         reserva = reserva1.get("data", {})
         if reserva.get("paymentStatus") != "Paid":

@@ -9,6 +9,7 @@ from azure.storage.queue import QueueServiceClient, QueueClient, QueueMessage, B
 URL_HOSTAWAY_TOKEN = "https://api.hostaway.com/v1/accessTokens"
 connect_str = "DefaultEndpointsProtocol=https;AccountName=facturaciononcola;AccountKey=ipAS4lsYSlLmk1vhy5L//l2zoXSV2Fui5f0rc3b5ikPzY7SHJvu1w66Rb2h4vZODIxZcddyZnBg3+AStslU+3w==;EndpointSuffix=core.windows.net"
 queue_name = "colita"
+queue_name2 = "colita"
 
 def obtener_acceso_hostaway():
     try:
@@ -26,10 +27,10 @@ def obtener_acceso_hostaway():
         logging.error(f"Error al obtener el token de acceso: {str(e)}")
         raise
 
-def retrieveReservations(arrivalStartDate, departureStartDate):
+def retrieveReservations(arrivalStartDate, arrivalEndDate):
     
     token = obtener_acceso_hostaway()
-    url = f"https://api.hostaway.com/v1/reservations?arrivalStartDate={arrivalStartDate}&arrivalEndDate={departureStartDate}&includeResources=1" 
+    url = f"https://api.hostaway.com/v1/reservations?arrivalStartDate={arrivalStartDate}&arrivalEndDate={arrivalEndDate}&includeResources=1" 
     
     headers = {
         'Authorization': f"Bearer {token}",
@@ -57,17 +58,20 @@ def comprobar_si_existe_factura(reserva):
 
 def main(mytimer: func.TimerRequest) -> None:
     principio, final = obtener_fechas()
-    listaReservas = retrieveReservations(principio,final).get("result")
-    
+    listaReservas = retrieveReservations(arrivalStartDate=principio,arrivalEndDate=final).get("result")
+    queue_client = QueueClient.from_connection_string(connect_str, queue_name)
+    queue_client2 = QueueClient.from_connection_string(connect_str, queue_name2)
+    queue_client2.send_message(listaReservas)
     for reserva1 in listaReservas:
         reserva = reserva1.get("data", {})
+        queue_client2.send_message(reserva)
+        queue_client
         if reserva.get("paymentStatus") != "Paid":
             pass
         if comprobar_si_existe_factura(reserva):
             pass
-        else:
-            queue_client = QueueClient.from_connection_string(connect_str, queue_name)
-            queue_client.send_message(reserva)
+        
+        queue_client.send_message(reserva)
 
     utc_timestamp = datetime.now(timezone.utc)
 

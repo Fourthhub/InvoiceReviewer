@@ -164,7 +164,6 @@ def main(mytimer: func.TimerRequest) -> None:
         serie_facturacion, iva = determinar_serie_y_iva(reserva,access_token)
         resultado_crear_factura, factura_info = crear_factura(reserva, serie_facturacion, iva)
         marcarComoFacturada(reserva, access_token)
-        
 
     
 

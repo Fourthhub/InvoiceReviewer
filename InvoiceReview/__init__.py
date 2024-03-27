@@ -61,8 +61,8 @@ def main(mytimer: func.TimerRequest) -> None:
     principio, final = obtener_fechas()
     listaReservas = retrieveReservations(arrivalStartDate=final,arrivalEndDate=principio).get("result")
 
-    for reserva1 in listaReservas:
-        reserva = reserva1.get("data", {})
+    for reserva in listaReservas:
+
         queue_client2.send_message(reserva)
         queue_client
         if reserva.get("paymentStatus") != "Paid":

@@ -6,7 +6,7 @@ import azure.functions as func
 from azure.storage.queue import QueueServiceClient, QueueClient, QueueMessage, BinaryBase64DecodePolicy, BinaryBase64EncodePolicy
 
 
-
+URL_HOSTAWAY_TOKEN = "https://api.hostaway.com/v1/accessTokens"
 connect_str = "DefaultEndpointsProtocol=https;AccountName=facturaciononcola;AccountKey=ipAS4lsYSlLmk1vhy5L//l2zoXSV2Fui5f0rc3b5ikPzY7SHJvu1w66Rb2h4vZODIxZcddyZnBg3+AStslU+3w==;EndpointSuffix=core.windows.net"
 queue_name = "colita"
 

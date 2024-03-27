@@ -27,9 +27,9 @@ def obtener_acceso_hostaway():
         raise
 
 def retrieveReservations(arrivalStartDate, departureStartDate):
-    token = obtener_acceso_hostaway()
-    url = f"https://api.hostaway.com/v1/reservations?arrivalStartDate={arrivalStartDate}&departureStartDate={departureStartDate}&includeResources=1"
     
+    token = obtener_acceso_hostaway()
+    url = f"https://api.hostaway.com/v1/reservations?arrivalStartDate={arrivalStartDate}&departureEndDate={departureStartDate}&includeResources=1" 
     
     headers = {
         'Authorization': f"Bearer {token}",

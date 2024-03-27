@@ -1,4 +1,4 @@
-from datetime import datetime,timedelta
+from datetime import datetime,timedelta,timezone
 import requests
 import logging
 
@@ -69,5 +69,6 @@ def main(mytimer: func.TimerRequest) -> None:
             queue_client = QueueClient.from_connection_string(connect_str, queue_name)
             queue_client.send_message(reserva)
 
+    utc_timestamp = datetime.now(timezone.utc)
 
     logging.info('Python timer trigger function ran at %s', utc_timestamp)

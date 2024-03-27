@@ -29,7 +29,7 @@ def obtener_acceso_hostaway():
 def retrieveReservations(arrivalStartDate, departureStartDate):
     
     token = obtener_acceso_hostaway()
-    url = f"https://api.hostaway.com/v1/reservations?arrivalStartDate={arrivalStartDate}&departureEndDate={departureStartDate}&includeResources=1" 
+    url = f"https://api.hostaway.com/v1/reservations?arrivalStartDate={arrivalStartDate}&arrivalEndDate={departureStartDate}&includeResources=1" 
     
     headers = {
         'Authorization': f"Bearer {token}",
@@ -57,8 +57,8 @@ def comprobar_si_existe_factura(reserva):
 
 
 def main(mytimer: func.TimerRequest) -> None:
-    arrivalStartDate, arrivalEndDate = obtener_fechas()
-    listaReservas = retrieveReservations(arrivalStartDate,arrivalEndDate)
+    principio, final = obtener_fechas()
+    listaReservas = retrieveReservations(principio,final)
     for reserva1 in listaReservas:
         reserva = reserva1.get("data", {})
         if reserva.get("paymentStatus") != "Paid":

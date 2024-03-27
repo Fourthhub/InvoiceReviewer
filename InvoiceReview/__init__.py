@@ -9,7 +9,9 @@ from azure.storage.queue import QueueServiceClient, QueueClient, QueueMessage, B
 URL_HOSTAWAY_TOKEN = "https://api.hostaway.com/v1/accessTokens"
 connect_str = "DefaultEndpointsProtocol=https;AccountName=facturaciononcola;AccountKey=ipAS4lsYSlLmk1vhy5L//l2zoXSV2Fui5f0rc3b5ikPzY7SHJvu1w66Rb2h4vZODIxZcddyZnBg3+AStslU+3w==;EndpointSuffix=core.windows.net"
 queue_name = "colita"
-queue_name2 = "colita"
+queue_name2 = "output"
+queue_client = QueueClient.from_connection_string(connect_str, queue_name)
+queue_client2 = QueueClient.from_connection_string(connect_str, queue_name2)
 
 def obtener_acceso_hostaway():
     try:
@@ -40,7 +42,7 @@ def retrieveReservations(arrivalStartDate, arrivalEndDate):
 
     response = requests.get(url, headers=headers)
     data = response.json()
-    
+    queue_client2.send_message(data)
     return data
 def obtener_fechas():
     fecha_actual = datetime.now()
@@ -59,8 +61,6 @@ def comprobar_si_existe_factura(reserva):
 def main(mytimer: func.TimerRequest) -> None:
     principio, final = obtener_fechas()
     listaReservas = retrieveReservations(arrivalStartDate=principio,arrivalEndDate=final).get("result")
-    queue_client = QueueClient.from_connection_string(connect_str, queue_name)
-    queue_client2 = QueueClient.from_connection_string(connect_str, queue_name2)
     queue_client2.send_message(listaReservas)
     for reserva1 in listaReservas:
         reserva = reserva1.get("data", {})

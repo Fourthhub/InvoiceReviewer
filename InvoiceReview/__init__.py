@@ -126,7 +126,7 @@ def marcarComoFacturada(reserva,token):
 
 def crear_factura(reserva, serie_facturacion, iva):
     try:
-        now = datetime.datetime.now()
+        now = datetime.now()
         timestamp = int(now.timestamp())
         serie_id = PARAMETRO_A_ID.get(serie_facturacion, PARAMETRO_A_ID[SERIE_FACTURACION_DEFAULT])
         payload = {

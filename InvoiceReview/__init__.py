@@ -42,7 +42,6 @@ def retrieveReservations(arrivalStartDate, arrivalEndDate):
 
     response = requests.get(url, headers=headers)
     data = response.json()
-    queue_client2.send_message(data)
     return data
 def obtener_fechas():
     fecha_actual = datetime.now()

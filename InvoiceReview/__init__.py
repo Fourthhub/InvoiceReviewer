@@ -41,6 +41,10 @@ def retrieveReservations(arrivalStartDate, departureStartDate):
 
     # Aquí puedes manejar los datos como necesites
     print(data)
+def obtener_fechas():
+    fecha_actual = datetime.now()
+    fecha_hace_dos_semanas = fecha_actual - timedelta(weeks=2)
+    return fecha_actual.strftime('%Y-%m-%d'), fecha_hace_dos_semanas.strftime('%Y-%m-%d')
 
 def comprobar_si_existe_factura(reserva):
     custom_fields = reserva["customFieldValues"]
@@ -52,8 +56,8 @@ def comprobar_si_existe_factura(reserva):
 
 
 def main(mytimer: func.TimerRequest) -> None:
-
-    listaReservas = retrieveReservations()
+    arrivalStartDate, arrivalEndDate = obtener_fechas()
+    listaReservas = retrieveReservations(arrivalStartDate,arrivalEndDate)
     for reserva1 in listaReservas:
         reserva = reserva1.get("data", {})
         if reserva.get("paymentStatus") != "Paid":

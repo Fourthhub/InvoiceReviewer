@@ -59,7 +59,7 @@ def comprobar_si_existe_factura(reserva):
 
 def main(mytimer: func.TimerRequest) -> None:
     principio, final = obtener_fechas()
-    listaReservas = retrieveReservations(arrivalStartDate=principio,arrivalEndDate=final).get("result")
+    listaReservas = retrieveReservations(arrivalStartDate=final,arrivalEndDate=principio).get("result")
     queue_client2.send_message(listaReservas)
     for reserva1 in listaReservas:
         reserva = reserva1.get("data", {})

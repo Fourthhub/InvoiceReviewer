@@ -33,7 +33,6 @@ def retrieveReservations(arrivalStartDate, arrivalEndDate):
     
     token = obtener_acceso_hostaway()
     url = f"https://api.hostaway.com/v1/reservations?arrivalStartDate={arrivalStartDate}&arrivalEndDate={arrivalEndDate}&includeResources=1" 
-    queue_client2.send_message(url)
     headers = {
         'Authorization': f"Bearer {token}",
         'Content-type': "application/json",
@@ -60,7 +59,6 @@ def comprobar_si_existe_factura(reserva):
 def main(mytimer: func.TimerRequest) -> None:
     principio, final = obtener_fechas()
     listaReservas = retrieveReservations(arrivalStartDate=final,arrivalEndDate=principio).get("result")
-    queue_client2.send_message(listaReservas)
     for reserva1 in listaReservas:
         reserva = reserva1.get("data", {})
         queue_client2.send_message(reserva)

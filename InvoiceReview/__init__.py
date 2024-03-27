@@ -3,15 +3,16 @@ import requests
 import logging
 
 import azure.functions as func
-from azure.storage.queue import QueueServiceClient, QueueClient, QueueMessage, BinaryBase64DecodePolicy, BinaryBase64EncodePolicy
 
-
+URL_HOLDED_INVOICE = "https://api.holded.com/api/invoicing/v1/documents/invoice"
 URL_HOSTAWAY_TOKEN = "https://api.hostaway.com/v1/accessTokens"
-connect_str = "DefaultEndpointsProtocol=https;AccountName=facturaciononcola;AccountKey=ipAS4lsYSlLmk1vhy5L//l2zoXSV2Fui5f0rc3b5ikPzY7SHJvu1w66Rb2h4vZODIxZcddyZnBg3+AStslU+3w==;EndpointSuffix=core.windows.net"
-queue_name = "colita"
-queue_name2 = "output"
-queue_client = QueueClient.from_connection_string(connect_str, queue_name)
-queue_client2 = QueueClient.from_connection_string(connect_str, queue_name2)
+SERIE_FACTURACION_DEFAULT = "Alojamientos"
+IVA_DEFAULT = 0.21
+PARAMETRO_A_ID = {
+    "Rocio": "65d9f06600a829a27305f066",
+    "Alojamientos": "65d9f0e90396551d79088219",
+    "Efectivo": "62115e5292bee258e53a6756",
+}
 
 def obtener_acceso_hostaway():
     try:
@@ -29,11 +30,10 @@ def obtener_acceso_hostaway():
         logging.error(f"Error al obtener el token de acceso: {str(e)}")
         raise
 
-def retrieveReservations(arrivalStartDate, arrivalEndDate):
+def retrieveReservations(arrivalStartDate, arrivalEndDate,token):
     
-    token = obtener_acceso_hostaway()
     url = f"https://api.hostaway.com/v1/reservations?arrivalStartDate={arrivalStartDate}&arrivalEndDate={arrivalEndDate}&includeResources=1" 
-    queue_client2.send_message(url)
+
     headers = {
         'Authorization': f"Bearer {token}",
         'Content-type': "application/json",
@@ -53,24 +53,120 @@ def comprobar_si_existe_factura(reserva):
     for field in custom_fields:
         if field["customField"]["name"] == "holdedID":
             if field["value"] == "Ya esta facturada":
-                return False
-    return True
+                return True
+    return False
 
+def determinar_serie_y_iva(reserva,token):
+
+    serie_facturacion = SERIE_FACTURACION_DEFAULT
+    iva = IVA_DEFAULT
+    reserva_id = str(reserva["hostawayReservationId"])
+    url = f" https://api.hostaway.com/v1/guestPayments/charges?reservationId={reserva_id}"
+    headers = {
+            'Authorization': f"Bearer {token}",
+            'Content-type': "application/json",
+            'Cache-control': "no-cache",
+        }
+    response = requests.get(url, headers=headers)
+    data = response.json()
+
+    # Acceder al 'paymentMethod' del primer elemento de 'result'
+    payment_method = data['result'][0]['paymentMethod']
+    if payment_method == "cash":
+        serie_facturacion="Efectivo"
+        iva=0
+        return serie_facturacion,iva
+    
+    custom_fields = reserva.get("listingCustomFields", [])
+    for field in custom_fields:
+        if field["customField"]["name"] == "Serie_Facturación":
+            serie_facturacion = field["value"]
+        if serie_facturacion == "Rocio":
+            iva = 0
+            break
+
+    return serie_facturacion, iva
+            
+def marcarComoFacturada(reserva,token):
+    encontrado=False
+    try:
+        
+        reserva_id = str(reserva["hostawayReservationId"])
+        url = f"https://api.hostaway.com/v1/reservations/{reserva_id}"
+        headers = {
+            'Authorization': f"Bearer {token}",
+            'Content-type': "application/json",
+            'Cache-control': "no-cache",
+        }
+
+        custom_fields = reserva["customFieldValues"]
+        for field in custom_fields:
+            if field["customField"]["name"] == "holdedID":
+                field["value"] = "Ya esta facturada"
+                encontrado = True  
+                break
+        if not encontrado:
+            nuevoCustomField= {"customFieldValues": [
+        {
+            "customFieldId": 56844,
+            "value": "Ya esta facturada"
+        } ]
+        }
+            response = requests.put(url, json=nuevoCustomField, headers=headers)
+        else:
+            response = requests.put(url, json=reserva, headers=headers)
+        response.raise_for_status()  # Esto lanzará un error si el código de estado es >= 400
+        return "Marca como facturada exitosamente."
+    except requests.RequestException as e:
+        error_msg = f"Error al marcar como facturada: {e}"
+        logging.error(error_msg)
+        return error_msg
+        
+
+def crear_factura(reserva, serie_facturacion, iva):
+    try:
+        now = datetime.datetime.now()
+        timestamp = int(now.timestamp())
+        serie_id = PARAMETRO_A_ID.get(serie_facturacion, PARAMETRO_A_ID[SERIE_FACTURACION_DEFAULT])
+        payload = {
+            "applyContactDefaults": True,
+            "items": [{
+                "tax": iva * 100,
+                "name": f"{reserva['listingName']} - {reserva['arrivalDate']} a {reserva['departureDate']}",
+                "subtotal": str(reserva["totalPrice"] / (1 + iva))
+            }],
+            "currency": reserva["currency"],
+            "date": timestamp,
+            "numSerieId": serie_id,
+            "contactName": reserva["guestName"]
+        }
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "key": "260f9570fed89b95c28916dee27bc684"
+        }
+        response = requests.post(URL_HOLDED_INVOICE, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.status_code, response.json()
+    except requests.RequestException as e:
+        logging.error(f"Error al crear la factura: {str(e)}")
+        raise
 
 def main(mytimer: func.TimerRequest) -> None:
+    access_token = obtener_acceso_hostaway()
     principio, final = obtener_fechas()
-    listaReservas = retrieveReservations(arrivalStartDate=final,arrivalEndDate=principio).get("result")
-
+    listaReservas = retrieveReservations(arrivalStartDate=final,arrivalEndDate=principio,token=access_token).get("result")
     for reserva in listaReservas:
-
-        queue_client2.send_message(reserva)
-        queue_client
         if reserva.get("paymentStatus") != "Paid":
-            pass
+            continue
         if comprobar_si_existe_factura(reserva):
-            pass
+            continue
+        serie_facturacion, iva = determinar_serie_y_iva(reserva,access_token)
+        resultado_crear_factura, factura_info = crear_factura(reserva, serie_facturacion, iva)
+        marcarComoFacturada(reserva, access_token)
         
-        queue_client.send_message(reserva)
+
+    
 
     utc_timestamp = datetime.now(timezone.utc)
 

@@ -33,7 +33,7 @@ def retrieveReservations(arrivalStartDate, arrivalEndDate):
     
     token = obtener_acceso_hostaway()
     url = f"https://api.hostaway.com/v1/reservations?arrivalStartDate={arrivalStartDate}&arrivalEndDate={arrivalEndDate}&includeResources=1" 
-    queue_client2.send_message(data)
+    queue_client2.send_message(url)
     headers = {
         'Authorization': f"Bearer {token}",
         'Content-type': "application/json",

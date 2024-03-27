@@ -1,4 +1,5 @@
 from datetime import datetime,timedelta
+import requests
 import logging
 
 import azure.functions as func

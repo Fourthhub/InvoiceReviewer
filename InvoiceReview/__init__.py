@@ -7,7 +7,7 @@ import azure.functions as func
 URL_HOLDED_INVOICE = "https://api.holded.com/api/invoicing/v1/documents/invoice"
 URL_HOSTAWAY_TOKEN = "https://api.hostaway.com/v1/accessTokens"
 SERIE_FACTURACION_DEFAULT = "Alojamientos"
-IVA_DEFAULT = 0.21
+IVA_DEFAULT = 0.10
 PARAMETRO_A_ID = {
     "Rocio": "65d9f06600a829a27305f066",
     "Alojamientos": "65d9f0e90396551d79088219",

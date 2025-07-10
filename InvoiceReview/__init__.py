@@ -45,7 +45,7 @@ def retrieveReservations(arrivalStartDate, arrivalEndDate,token):
     return data
 def obtener_fechas():
     fecha_actual = datetime.now()
-    fecha_hace_dos_semanas = fecha_actual - timedelta(weeks=2)
+    fecha_hace_dos_semanas = fecha_actual - timedelta(weeks=4)
     return fecha_actual.strftime('%Y-%m-%d'), fecha_hace_dos_semanas.strftime('%Y-%m-%d')
 
 def comprobar_si_existe_factura(reserva):

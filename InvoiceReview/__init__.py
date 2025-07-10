@@ -25,7 +25,9 @@ def obtener_acceso_hostaway():
         headers = {'Content-type': "application/x-www-form-urlencoded", 'Cache-control': "no-cache"}
         response = requests.post(URL_HOSTAWAY_TOKEN, data=payload, headers=headers)
         response.raise_for_status()
+        logging.info(f"Token recibido: {response.json()['access_token']}")
         return response.json()["access_token"]
+    
     except requests.RequestException as e:
         logging.error(f"Error al obtener el token de acceso: {str(e)}")
         raise
@@ -154,7 +156,7 @@ def crear_factura(reserva, serie_facturacion, iva):
         raise
 
 def main(mytimer: func.TimerRequest) -> None:
-    access_token = obtener_acceso_hostaway()
+    token = obtener_acceso_hostaway()
     principio, final = obtener_fechas()
     listaReservas = retrieveReservations(arrivalStartDate=final,arrivalEndDate=principio,token=access_token).get("result")
     for reserva in listaReservas:
@@ -164,7 +166,7 @@ def main(mytimer: func.TimerRequest) -> None:
             continue
         serie_facturacion, iva = determinar_serie_y_iva(reserva,access_token)
         resultado_crear_factura, factura_info = crear_factura(reserva, serie_facturacion, iva)
-        marcarComoFacturada(reserva, access_token)
+        marcarComoFacturada(reserva, token)
 
     
 

@@ -53,6 +53,7 @@ def comprobar_si_existe_factura(reserva):
     for field in custom_fields:
         if field["customField"]["name"] == "holdedID":
             if field["value"] == "Ya esta facturada":
+                logging.error(error_msg)
                 return True
     return False
 
@@ -158,13 +159,17 @@ def main(mytimer: func.TimerRequest) -> None:
     principio, final = obtener_fechas()
     listaReservas = retrieveReservations(arrivalStartDate=final,arrivalEndDate=principio,token=access_token).get("result")
     for reserva in listaReservas:
+        logging.info(f"{reserva["hostawayReservationId"]} - Procesando Reserva...")
         if reserva.get("paymentStatus") != "Paid":
+            logging.info(f"{reserva["hostawayReservationId"]} - No esta pagada aún")
             continue
         if comprobar_si_existe_factura(reserva):
+            logging.info(f"{reserva["hostawayReservationId"]} - Ya existe la factura")
             continue
         serie_facturacion, iva = determinar_serie_y_iva(reserva,access_token)
         resultado_crear_factura, factura_info = crear_factura(reserva, serie_facturacion, iva)
         marcarComoFacturada(reserva, access_token)
+        logging.info(f"{reserva["hostawayReservationId"]} - Factura generada en Holded y marcada en Hostaway")
 
     
 

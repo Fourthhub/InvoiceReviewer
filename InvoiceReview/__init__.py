@@ -234,7 +234,7 @@ def crear_factura(reserva, serie_facturacion, iva):
             "currency": reserva.get("currency", "EUR"),
             "date": timestamp_seconds,  # segundos
             "numSerieId": serie_id,
-            "approveDoc": True,
+            "approveDoc": False,
             "contactName": reserva.get("guestName", "Huésped"),
         }
         headers = {

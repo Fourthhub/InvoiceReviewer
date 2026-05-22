@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
-import os
 import time
 import requests
 import logging
@@ -9,39 +8,34 @@ import azure.functions as func
 
 # --- Constantes y configuración ---
 URL_HOLDED_INVOICE = "https://api.holded.com/api/invoicing/v1/documents/invoice"
+URL_HOLDED_RECEIPT = "https://api.holded.com/api/invoicing/v1/documents/salesreceipt"
 URL_HOSTAWAY_TOKEN = "https://api.hostaway.com/v1/accessTokens"
 
 SERIE_FACTURACION_DEFAULT = "Alojamientos"
 IVA_DEFAULT = Decimal("0.10")
 
-# Mapea nombre de serie -> numSerieId de Holded
 PARAMETRO_A_ID = {
     "Rocio": "65d9f06600a829a27305f066",
     "Alojamientos": "65d9f0e90396551d79088219",
     "Efectivo": "62115e5292bee258e53a6756",
 }
 
-# Recomendado: mover a variables de entorno en Azure (App Settings / Key Vault)
-HOSTAWAY_CLIENT_ID = os.environ.get("HOSTAWAY_CLIENT_ID", "81585")
-HOSTAWAY_CLIENT_SECRET = os.environ.get(
-    "HOSTAWAY_CLIENT_SECRET",
-    "0e3c059dceb6ec1e9ec6d5c6cf4030d9c9b6e5b83d3a70d177cf66838694db5f",
-)
-HOLDED_API_KEY = os.environ.get("HOLDED_API_KEY", "260f9570fed89b95c28916dee27bc684")
+HOSTAWAY_CLIENT_ID = "81585"
+HOSTAWAY_CLIENT_SECRET = "0e3c059dceb6ec1e9ec6d5c6cf4030d9c9b6e5b83d3a70d177cf66838694db5f"
+HOLDED_API_KEY = "260f9570fed89b95c28916dee27bc684"
+HOLDED_API_KEY_RECEIPT = "2ed3f9bfff52da560e2c7826fe30f6c1"
 
-# --- Helper con reintentos/backoff ligero ---
+
+# --- Helper con reintentos/backoff ---
 def _request(method, url, *, max_retries=3, backoff_base=1.5, **kwargs):
     for attempt in range(max_retries + 1):
         resp = requests.request(method, url, timeout=30, **kwargs)
-        # Reintentar en 429/5xx
         if resp.status_code in (429,) or 500 <= resp.status_code < 600:
             if attempt < max_retries:
                 time.sleep(backoff_base ** attempt)
                 continue
-        # Para cualquier otro código, levanta si es error
         resp.raise_for_status()
         return resp
-    # Si sale del bucle sin devolver, última respuesta con error
     resp.raise_for_status()
 
 
@@ -61,12 +55,8 @@ def obtener_acceso_hostaway():
     return r.json()["access_token"]
 
 
-# --- Paginación offset/limit de Hostaway ---
+# --- Paginación reservas Hostaway ---
 def retrieveReservations(arrivalStartDate, arrivalEndDate, token, limit=500, timeout=30, max_pages=200):
-    """
-    Pagina por offset hasta agotar 'count' o hasta que el bloque sea < limit.
-    Si Hostaway capa limit (p.ej. a 100), se adapta leyendo 'limit' efectivo de la respuesta.
-    """
     base = (
         "https://api.hostaway.com/v1/reservations"
         f"?arrivalStartDate={arrivalStartDate}"
@@ -83,7 +73,6 @@ def retrieveReservations(arrivalStartDate, arrivalEndDate, token, limit=500, tim
     offset = 0
     pages = 0
 
-    # Primera llamada para descubrir count y limit efectivo
     url0 = f"{base}&limit={limit}&offset={offset}"
     resp = _request("GET", url0, headers=headers)
     data = resp.json() or {}
@@ -92,9 +81,7 @@ def retrieveReservations(arrivalStartDate, arrivalEndDate, token, limit=500, tim
     chunk = data.get("result") or []
     all_results.extend(chunk)
 
-    # Si no hay más datos, devolvemos
     if total is None:
-        # Fallback por longitud de bloque
         while chunk and len(chunk) >= eff_limit and pages < max_pages:
             pages += 1
             offset += eff_limit
@@ -106,7 +93,6 @@ def retrieveReservations(arrivalStartDate, arrivalEndDate, token, limit=500, tim
             eff_limit = data.get("limit") or eff_limit
         return {"result": all_results}
 
-    # Con count conocido
     while len(all_results) < total and pages < max_pages:
         pages += 1
         offset += eff_limit
@@ -124,7 +110,7 @@ def retrieveReservations(arrivalStartDate, arrivalEndDate, token, limit=500, tim
     return {"result": all_results}
 
 
-# --- Fechas (start, end) ---
+# --- Fechas ---
 def obtener_fechas():
     start = (datetime.now() - timedelta(weeks=2)).strftime("%Y-%m-%d")
     end = datetime.now().strftime("%Y-%m-%d")
@@ -134,10 +120,8 @@ def obtener_fechas():
 # --- Chequeo si ya está facturada ---
 def comprobar_si_existe_factura(reserva):
     for field in (reserva.get("customFieldValues") or []):
-        # Busca por nombre del custom field
         if field.get("customField", {}).get("name") == "holdedID":
             return field.get("value") == "Ya esta facturada"
-        # O por ID conocido (si lo sabes)
         if field.get("customFieldId") == 56844:
             return field.get("value") == "Ya esta facturada"
     return False
@@ -145,16 +129,9 @@ def comprobar_si_existe_factura(reserva):
 
 # --- Determinar serie e IVA ---
 def determinar_serie_y_iva(reserva, token):
-    """
-    Regla actual:
-      - Si paymentMethod == 'cash' => serie 'Efectivo' e IVA 0 (OJO: valida fiscalmente esta regla).
-      - Si customFieldId == 57829 => serie según valor del campo.
-      - Serie 'Rocio' => IVA 0.
-    """
     serie_facturacion = SERIE_FACTURACION_DEFAULT
     iva = IVA_DEFAULT
 
-    # Lee método de pago (si existe algún cargo)
     reserva_id = str(reserva.get("hostawayReservationId"))
     url = f"https://api.hostaway.com/v1/guestPayments/charges?reservationId={reserva_id}"
     headers = {
@@ -169,7 +146,6 @@ def determinar_serie_y_iva(reserva, token):
         serie_facturacion = "Efectivo"
         iva = Decimal("0.00")
 
-    # Campo personalizado de serie (57829)
     for field in (reserva.get("customFieldValues") or []):
         if field.get("customFieldId") == 57829:
             if field.get("value"):
@@ -181,7 +157,20 @@ def determinar_serie_y_iva(reserva, token):
     return serie_facturacion, iva
 
 
-# --- Marcar reserva como facturada en Hostaway ---
+# --- Obtener propietario del listing ---
+def obtener_contact_name_listing(reserva, token):
+    listing_id = str(reserva.get("listingId"))
+    url = f"https://api.hostaway.com/v1/listings/{listing_id}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-type": "application/json",
+        "Cache-control": "no-cache",
+    }
+    r = _request("GET", url, headers=headers)
+    return r.json()["result"]["contactName"]
+
+
+# --- Marcar reserva como facturada ---
 def marcarComoFacturada(reserva, token):
     try:
         reserva_id = str(reserva.get("hostawayReservationId"))
@@ -193,7 +182,6 @@ def marcarComoFacturada(reserva, token):
         }
 
         custom_fields = list(reserva.get("customFieldValues") or [])
-        # Busca existente por nombre o por ID
         actualizado = False
         for field in custom_fields:
             if field.get("customField", {}).get("name") == "holdedID" or field.get("customFieldId") == 56844:
@@ -211,28 +199,25 @@ def marcarComoFacturada(reserva, token):
         return f"Error al marcar como facturada: {e}"
 
 
-# --- Crear factura en Holded (timestamp en segundos, como pediste) ---
+# --- Crear factura en Holded ---
 def crear_factura(reserva, serie_facturacion, iva):
     try:
-        now = datetime.now()
-        timestamp_seconds = int(now.timestamp())  # NO cambiar a ms
+        timestamp_seconds = int(datetime.now().timestamp())
         serie_id = PARAMETRO_A_ID.get(serie_facturacion, PARAMETRO_A_ID[SERIE_FACTURACION_DEFAULT])
 
         total = Decimal(str(reserva.get("totalPrice", 0)))
         base = (total / (Decimal("1") + iva)).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        tax_pct = int((iva * 100).quantize(Decimal("1")))  # 10, 0, etc.
+        tax_pct = int((iva * 100).quantize(Decimal("1")))
 
         payload = {
             "applyContactDefaults": True,
-            "items": [
-                {
-                    "tax": tax_pct,
-                    "name": f"{reserva.get('listingName', '')} - {reserva.get('arrivalDate', '')} a {reserva.get('departureDate', '')}",
-                    "subtotal": str(base),
-                }
-            ],
+            "items": [{
+                "tax": tax_pct,
+                "name": f"{reserva.get('listingName', '')} - {reserva.get('arrivalDate', '')} a {reserva.get('departureDate', '')}",
+                "subtotal": str(base),
+            }],
             "currency": reserva.get("currency", "EUR"),
-            "date": timestamp_seconds,  # segundos
+            "date": timestamp_seconds,
             "numSerieId": serie_id,
             "approveDoc": False,
             "contactName": reserva.get("guestName", "Huésped"),
@@ -249,6 +234,41 @@ def crear_factura(reserva, serie_facturacion, iva):
         raise
 
 
+# --- Generar recibo en Holded (para serie Rocio) ---
+def generarRecibo(propietario, reserva, serie_facturacion, iva):
+    try:
+        timestamp_seconds = int(datetime.now().timestamp())
+        serie_id = PARAMETRO_A_ID.get(serie_facturacion, PARAMETRO_A_ID[SERIE_FACTURACION_DEFAULT])
+
+        total = Decimal(str(reserva.get("totalPrice", 0)))
+        base = (total / (Decimal("1") + iva)).quantize(Decimal("0.01"), ROUND_HALF_UP) if iva > 0 else total.quantize(Decimal("0.01"), ROUND_HALF_UP)
+        tax_pct = int((iva * 100).quantize(Decimal("1")))
+
+        payload = {
+            "applyContactDefaults": False,
+            "contactName": propietario.upper(),
+            "items": [{
+                "tax": tax_pct,
+                "name": f"{reserva.get('guestName', '')} {reserva.get('listingName', '')} - {reserva.get('arrivalDate', '')} a {reserva.get('departureDate', '')}",
+                "subtotal": str(base),
+            }],
+            "currency": reserva.get("currency", "EUR"),
+            "notes": "Adarena Stays S.L interviene exclusivamente como mandatario e intermediario en la gestión de cobros y reservas del inmueble objeto de alquiler turístico, actuando en nombre y por cuenta del propietario, quien ostenta la condición de prestador del servicio a efectos contractuales y fiscales.",
+            "date": timestamp_seconds,
+            "numSerieId": serie_id,
+        }
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "key": HOLDED_API_KEY_RECEIPT,
+        }
+        r = _request("POST", URL_HOLDED_RECEIPT, json=payload, headers=headers)
+        return r.status_code, r.json()
+    except requests.RequestException as e:
+        logging.error(f"Error al generar el recibo: {e}")
+        raise
+
+
 # --- Entry point Timer Trigger ---
 def main(mytimer: func.TimerRequest) -> None:
     access_token = obtener_acceso_hostaway()
@@ -258,7 +278,7 @@ def main(mytimer: func.TimerRequest) -> None:
         arrivalStartDate=start,
         arrivalEndDate=end,
         token=access_token,
-        limit=500,          # sube el límite; si Hostaway lo capa, se adapta
+        limit=500,
         timeout=30,
         max_pages=200,
     )
@@ -279,14 +299,18 @@ def main(mytimer: func.TimerRequest) -> None:
         serie_facturacion, iva = determinar_serie_y_iva(reserva, access_token)
 
         try:
-            status, factura_info = crear_factura(reserva, serie_facturacion, iva)
+            if serie_facturacion == "Rocio":
+                propietario = obtener_contact_name_listing(reserva, access_token)
+                status, factura_info = generarRecibo(propietario, reserva, serie_facturacion, iva)
+            else:
+                status, factura_info = crear_factura(reserva, serie_facturacion, iva)
         except Exception as e:
-            logging.error(f"{rid} - Error al crear factura: {e}")
+            logging.error(f"{rid} - Error al crear factura/recibo: {e}")
             continue
 
         if 200 <= status < 300:
             marcarComoFacturada(reserva, access_token)
-            logging.info(f"{rid} - Factura generada en Holded y marcada en Hostaway")
+            logging.info(f"{rid} - Documento generado en Holded y marcado en Hostaway")
         else:
             logging.error(f"{rid} - Error en respuesta de Holded: status={status} info={factura_info}")
 

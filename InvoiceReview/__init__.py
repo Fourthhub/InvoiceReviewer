@@ -182,8 +182,8 @@ def obtener_contact_name_listing(reserva, token):
 
 def marcarComoFacturada(reserva, token):
     try:
-        reserva_id = str(reserva.get("hostawayReservationId"))
-        url = f"https://api.hostaway.com/v1/reservations/{reserva_id}"
+        reserva_id = str(reserva.get("id"))
+        url = f"https://api.hostaway.com/v1/reservations/{reserva_id}?forceOverbooking=1"
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-type": "application/json",
@@ -265,7 +265,7 @@ def generarRecibo(propietario, reserva, serie_facturacion, iva):
                 "subtotal": str(base),
             }],
             "currency": reserva.get("currency", "EUR"),
-            "notes": "Adarena Stays S.L interviene exclusivamente como mandatario e intermediario en la gestión de cobros y reservas del inmueble objeto de alquiler turístico, actuando en nombre y por cuenta del propietario, quien ostenta la condición de prestador del servicio a efectos contractuales y fiscales.",
+            "notes": "Adarena Stays S.L (Apartamentos Cantabria) interviene exclusivamente como mandatario e intermediario en la gestión de cobros y reservas del inmueble objeto de alquiler turístico, actuando en nombre y por cuenta del propietario, quien ostenta la condición de prestador del servicio a efectos contractuales y fiscales.",
             "date": timestamp_seconds,
             "numSerieId": serie_id,
         }

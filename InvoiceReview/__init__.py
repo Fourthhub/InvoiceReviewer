@@ -164,7 +164,10 @@ def determinar_serie_y_iva(reserva, token):
 
 # --- Obtener propietario del listing ---
 def obtener_contact_name_listing(reserva, token):
-    listing_id = str(reserva.get("listingId"))
+    listing_id = reserva.get("listingMapId")
+    if not listing_id:
+        raise ValueError(f"Reserva {reserva.get('hostawayReservationId')} no tiene listingMapId")
+
     url = f"https://api.hostaway.com/v1/listings/{listing_id}"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -172,10 +175,11 @@ def obtener_contact_name_listing(reserva, token):
         "Cache-control": "no-cache",
     }
     r = _request("GET", url, headers=headers)
-    return r.json()["result"]["contactName"]
+    contact_name = r.json()["result"]["contactName"]
+    logging.info(f"[obtener_contact_name_listing] listingMapId={listing_id} -> contactName={contact_name}")
+    return contact_name
 
 
-# --- Marcar reserva como facturada ---
 def marcarComoFacturada(reserva, token):
     try:
         reserva_id = str(reserva.get("hostawayReservationId"))
@@ -185,32 +189,19 @@ def marcarComoFacturada(reserva, token):
             "Content-type": "application/json",
             "Cache-control": "no-cache",
         }
-
-        # Limpiar a solo customFieldId + value (sin metadatos extra que vienen del GET)
-        raw_fields = reserva.get("customFieldValues") or []
-        custom_fields = [
-            {"customFieldId": f["customFieldId"], "value": f.get("value")}
-            for f in raw_fields
-            if f.get("customFieldId") is not None
-        ]
-
-        actualizado = False
-        for field in custom_fields:
-            if field.get("customFieldId") == 56844:
-                field["value"] = "Ya esta facturada"
-                actualizado = True
-                break
-        if not actualizado:
-            custom_fields.append({"customFieldId": 56844, "value": "Ya esta facturada"})
-
-        payload = {"customFieldValues": custom_fields}
+        payload = {"customFieldValues": [{"customFieldId": 56844, "value": "Ya esta facturada"}]}
 
         response = requests.put(url, json=payload, headers=headers, timeout=HTTP_TIMEOUT)
-        logging.error(f"[marcarComoFacturada] Status: {response.status_code} | Body: {response.text}")
-        if response.status_code == 403:
-            logging.error("[marcarComoFacturada] 403: token expirado o sin permisos de escritura sobre reservas")
+        logging.info(f"[marcarComoFacturada] Status: {response.status_code} | Body: {response.text}")
         response.raise_for_status()
         return "Marcada como facturada."
+
+    except requests.HTTPError as e:
+        logging.error(f"[marcarComoFacturada] HTTP {e.response.status_code}: {e.response.text}")
+        return f"Error al marcar como facturada: {e}"
+    except requests.RequestException as e:
+        logging.error(f"[marcarComoFacturada] Request error: {e}")
+        return f"Error al marcar como facturada: {e}"
 
     except requests.HTTPError as e:
         logging.error(f"[marcarComoFacturada] HTTP {e.response.status_code}: {e.response.text}")
@@ -316,6 +307,7 @@ def main(mytimer: func.TimerRequest) -> None:
             logging.info(f"{rid} - Ya existe la factura")
             continue
 
+
         serie_facturacion, iva = determinar_serie_y_iva(reserva, access_token)
 
         try:
@@ -328,9 +320,11 @@ def main(mytimer: func.TimerRequest) -> None:
             logging.error(f"{rid} - Error al crear factura/recibo: {e}")
             continue
 
+        logging.info(f"{rid} - Respuesta Holded: status={status} info={factura_info}")
+
         if 200 <= status < 300:
-            marcarComoFacturada(reserva, access_token)
-            logging.info(f"{rid} - Documento generado en Holded y marcado en Hostaway")
+            resultado = marcarComoFacturada(reserva, access_token)
+            logging.info(f"{rid} - Documento generado en Holded. Marcado: {resultado}")
         else:
             logging.error(f"{rid} - Error en respuesta de Holded: status={status} info={factura_info}")
 

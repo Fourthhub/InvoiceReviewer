@@ -112,7 +112,7 @@ def retrieveReservations(arrivalStartDate, arrivalEndDate, token, limit=500, tim
 
 # --- Fechas ---
 def obtener_fechas():
-    start = (datetime.now() - timedelta(weeks=2)).strftime("%Y-%m-%d")
+    start = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
     end = datetime.now().strftime("%Y-%m-%d")
     return start, end
 

@@ -251,6 +251,7 @@ def generarRecibo(propietario, reserva, serie_facturacion, iva):
         base = (total / (Decimal("1") + iva)).quantize(Decimal("0.01"), ROUND_HALF_UP) if iva > 0 else total.quantize(Decimal("0.01"), ROUND_HALF_UP)
         tax_pct = int((iva * 100).quantize(Decimal("1")))
 
+
         payload = {
             "applyContactDefaults": False,
             "contactName": propietario.upper(),

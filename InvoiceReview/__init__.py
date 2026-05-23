@@ -306,6 +306,10 @@ def main(mytimer: func.TimerRequest) -> None:
         if comprobar_si_existe_factura(reserva):
             logging.info(f"{rid} - Ya existe la factura")
             continue
+        
+        if reserva.get("status") == "cancelled":
+            logging.info(f"{rid} - Reserva cancelada, saltando")
+            continue
 
 
         serie_facturacion, iva = determinar_serie_y_iva(reserva, access_token)

@@ -130,8 +130,6 @@ def comprobar_si_existe_factura(reserva):
     for field in (reserva.get("customFieldValues") or []):
         if field.get("customFieldId") == 56844:
             return field.get("value") == "Ya esta facturada"
-        if field.get("customField", {}).get("name") == "holdedID":
-            return field.get("value") == "Ya esta facturada"
     return False
 
 
@@ -188,7 +186,14 @@ def marcarComoFacturada(reserva, token):
             "Cache-control": "no-cache",
         }
 
-        custom_fields = list(reserva.get("customFieldValues") or [])
+        # Limpiar a solo customFieldId + value (sin metadatos extra que vienen del GET)
+        raw_fields = reserva.get("customFieldValues") or []
+        custom_fields = [
+            {"customFieldId": f["customFieldId"], "value": f.get("value")}
+            for f in raw_fields
+            if f.get("customFieldId") is not None
+        ]
+
         actualizado = False
         for field in custom_fields:
             if field.get("customFieldId") == 56844:
@@ -199,10 +204,19 @@ def marcarComoFacturada(reserva, token):
             custom_fields.append({"customFieldId": 56844, "value": "Ya esta facturada"})
 
         payload = {"customFieldValues": custom_fields}
-        _request("PUT", url, json=payload, headers=headers)
+
+        response = requests.put(url, json=payload, headers=headers, timeout=HTTP_TIMEOUT)
+        logging.error(f"[marcarComoFacturada] Status: {response.status_code} | Body: {response.text}")
+        if response.status_code == 403:
+            logging.error("[marcarComoFacturada] 403: token expirado o sin permisos de escritura sobre reservas")
+        response.raise_for_status()
         return "Marcada como facturada."
+
+    except requests.HTTPError as e:
+        logging.error(f"[marcarComoFacturada] HTTP {e.response.status_code}: {e.response.text}")
+        return f"Error al marcar como facturada: {e}"
     except requests.RequestException as e:
-        logging.error(f"Error al marcar como facturada: {e}")
+        logging.error(f"[marcarComoFacturada] Request error: {e}")
         return f"Error al marcar como facturada: {e}"
 
 
@@ -250,7 +264,6 @@ def generarRecibo(propietario, reserva, serie_facturacion, iva):
         total = Decimal(str(reserva.get("totalPrice", 0)))
         base = (total / (Decimal("1") + iva)).quantize(Decimal("0.01"), ROUND_HALF_UP) if iva > 0 else total.quantize(Decimal("0.01"), ROUND_HALF_UP)
         tax_pct = int((iva * 100).quantize(Decimal("1")))
-
 
         payload = {
             "applyContactDefaults": False,

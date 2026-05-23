@@ -13,6 +13,7 @@ URL_HOSTAWAY_TOKEN = "https://api.hostaway.com/v1/accessTokens"
 
 SERIE_FACTURACION_DEFAULT = "Alojamientos"
 IVA_DEFAULT = Decimal("0.10")
+HTTP_TIMEOUT = 30
 
 PARAMETRO_A_ID = {
     "Rocio": "65d9f06600a829a27305f066",
@@ -29,7 +30,7 @@ HOLDED_API_KEY_RECEIPT = "2ed3f9bfff52da560e2c7826fe30f6c1"
 # --- Helper con reintentos/backoff ---
 def _request(method, url, *, max_retries=3, backoff_base=1.5, **kwargs):
     for attempt in range(max_retries + 1):
-        resp = requests.request(method, url, timeout=30, **kwargs)
+        resp = requests.request(method, url, timeout=HTTP_TIMEOUT, **kwargs)
         if resp.status_code in (429,) or 500 <= resp.status_code < 600:
             if attempt < max_retries:
                 time.sleep(backoff_base ** attempt)
@@ -41,22 +42,29 @@ def _request(method, url, *, max_retries=3, backoff_base=1.5, **kwargs):
 
 # --- Auth Hostaway ---
 def obtener_acceso_hostaway():
-    payload = {
-        "grant_type": "client_credentials",
-        "client_id": HOSTAWAY_CLIENT_ID,
-        "client_secret": HOSTAWAY_CLIENT_SECRET,
-        "scope": "general",
-    }
-    headers = {
-        "Content-type": "application/x-www-form-urlencoded",
-        "Cache-control": "no-cache",
-    }
-    r = _request("POST", URL_HOSTAWAY_TOKEN, data=payload, headers=headers)
-    return r.json()["access_token"]
+    try:
+        payload = {
+            "grant_type": "client_credentials",
+            "client_id": HOSTAWAY_CLIENT_ID,
+            "client_secret": HOSTAWAY_CLIENT_SECRET,
+            "scope": "general"
+        }
+        headers = {
+            "Content-type": "application/x-www-form-urlencoded",
+            "Cache-control": "no-cache"
+        }
+        response = requests.post(URL_HOSTAWAY_TOKEN, data=payload, headers=headers, timeout=HTTP_TIMEOUT)
+        response.raise_for_status()
+        token = response.json()["access_token"]
+        logging.info("Token de Hostaway obtenido con éxito.")
+        return token
+    except requests.RequestException as e:
+        logging.error(f"Error al obtener el token de acceso de Hostaway: {str(e)}")
+        raise
 
 
 # --- Paginación reservas Hostaway ---
-def retrieveReservations(arrivalStartDate, arrivalEndDate, token, limit=500, timeout=30, max_pages=200):
+def retrieveReservations(arrivalStartDate, arrivalEndDate, token, limit=500, max_pages=200):
     base = (
         "https://api.hostaway.com/v1/reservations"
         f"?arrivalStartDate={arrivalStartDate}"
@@ -120,9 +128,9 @@ def obtener_fechas():
 # --- Chequeo si ya está facturada ---
 def comprobar_si_existe_factura(reserva):
     for field in (reserva.get("customFieldValues") or []):
-        if field.get("customField", {}).get("name") == "holdedID":
-            return field.get("value") == "Ya esta facturada"
         if field.get("customFieldId") == 56844:
+            return field.get("value") == "Ya esta facturada"
+        if field.get("customField", {}).get("name") == "holdedID":
             return field.get("value") == "Ya esta facturada"
     return False
 
@@ -143,8 +151,7 @@ def determinar_serie_y_iva(reserva, token):
     result = data.get("result") or []
     payment_method = result[0].get("paymentMethod") if result else None
     if payment_method == "cash":
-        serie_facturacion = "Efectivo"
-        iva = Decimal("0.00")
+        return "Efectivo", Decimal("0.00")
 
     for field in (reserva.get("customFieldValues") or []):
         if field.get("customFieldId") == 57829:
@@ -184,7 +191,7 @@ def marcarComoFacturada(reserva, token):
         custom_fields = list(reserva.get("customFieldValues") or [])
         actualizado = False
         for field in custom_fields:
-            if field.get("customField", {}).get("name") == "holdedID" or field.get("customFieldId") == 56844:
+            if field.get("customFieldId") == 56844:
                 field["value"] = "Ya esta facturada"
                 actualizado = True
                 break
@@ -206,7 +213,7 @@ def crear_factura(reserva, serie_facturacion, iva):
         serie_id = PARAMETRO_A_ID.get(serie_facturacion, PARAMETRO_A_ID[SERIE_FACTURACION_DEFAULT])
 
         total = Decimal(str(reserva.get("totalPrice", 0)))
-        base = (total / (Decimal("1") + iva)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        base = (total / (Decimal("1") + iva)).quantize(Decimal("0.01"), ROUND_HALF_UP) if iva > 0 else total.quantize(Decimal("0.01"), ROUND_HALF_UP)
         tax_pct = int((iva * 100).quantize(Decimal("1")))
 
         payload = {
@@ -279,7 +286,6 @@ def main(mytimer: func.TimerRequest) -> None:
         arrivalEndDate=end,
         token=access_token,
         limit=500,
-        timeout=30,
         max_pages=200,
     )
     listaReservas = (reservas_json or {}).get("result") or []

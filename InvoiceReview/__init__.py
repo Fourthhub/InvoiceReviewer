@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 import time
+import os
 import requests
 import logging
 
@@ -21,8 +22,8 @@ PARAMETRO_A_ID = {
     "Efectivo": "62115e5292bee258e53a6756",
 }
 
-HOSTAWAY_CLIENT_ID = "81585"
-HOSTAWAY_CLIENT_SECRET = "0e3c059dceb6ec1e9ec6d5c6cf4030d9c9b6e5b83d3a70d177cf66838694db5f"
+HOSTAWAY_CLIENT_ID = os.environ["hostaway_client_id"]
+HOSTAWAY_CLIENT_SECRET = os.environ["hostaway_client_secret"]
 HOLDED_API_KEY = "260f9570fed89b95c28916dee27bc684"
 HOLDED_API_KEY_RECEIPT = "2ed3f9bfff52da560e2c7826fe30f6c1"
 

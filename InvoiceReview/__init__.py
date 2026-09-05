@@ -24,8 +24,8 @@ PARAMETRO_A_ID = {
 
 HOSTAWAY_CLIENT_ID = os.environ["hostaway_client_id"]
 HOSTAWAY_CLIENT_SECRET = os.environ["hostaway_client_secret"]
-HOLDED_API_KEY = "260f9570fed89b95c28916dee27bc684"
-HOLDED_API_KEY_RECEIPT = "2ed3f9bfff52da560e2c7826fe30f6c1"
+HOLDED_API_KEY = os.environ["holded_api_key"]
+HOLDED_API_KEY_RECEIPT = os.environ["holded_api_key_receipt"]
 
 
 # --- Helper con reintentos/backoff ---
